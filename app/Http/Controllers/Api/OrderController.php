@@ -46,7 +46,7 @@ class OrderController extends Controller
         $request->validate([
             'shipping_address_id' => 'required|exists:addresses,id',
             'billing_address_id' => 'required|exists:addresses,id',
-            'payment_method' => 'required|in:card,paypal,bank_transfer',
+            'payment_method' => 'required|in:card,transfer,bank_transfer,virement',
             'coupon_code' => 'nullable|string',
         ]);
 

@@ -2,49 +2,41 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
-use Illuminate\Database\Eloquent\SoftDeletes;
-use Cviebrock\EloquentSluggable\Sluggable;
+use Illuminate\Database\Eloquent\Model;
 
 class Product extends Model
 {
-    use HasFactory, SoftDeletes, Sluggable;
+    use HasFactory;
 
     protected $fillable = [
-        'category_id', 'name', 'slug', 'description', 'technical_specs',
-        'price', 'sale_price', 'stock', 'sku', 'availability',
-        'delivery_days', 'is_active', 'is_featured', 'views',
-    
-    // Nouvelles caractéristiques
-    'bike_type','age_range','number_of_speeds','wheel_size','frame_material','suspension_type','special_features','brake_style','wheel_width', 'model_name','power_source','wheel_material', 'year','battery_energy_content','battery_capacity','max_speed','max_range','motor_power','charging_time','weight', 'max_load','dimensions','package_weight','waterproof_rating','certification','assembly_required','warranty_type','warranty_description','included_components',
+        'category_id', 'name', 'name_de', 'slug',
+        'description', 'description_de',
+        'price', 'sale_price', 'stock',
+        'is_featured', 'is_new', 'assembly_required',
+        'brand', 'model_name', 'year',
+        'bike_type', 'age_range', 'color', 'colors', 'sizes',
+        'wheel_size', 'wheel_width', 'wheel_material',
+        'frame_material', 'number_of_speeds',
+        'suspension_type', 'brake_style',
+        'power_source', 'motor_power',
+        'battery_capacity', 'battery_energy_content',
+        'max_speed', 'max_range', 'charging_time',
+        'weight', 'max_load', 'dimensions',
+        'certification', 'waterproof_rating',
+        'warranty_type', 'warranty_description',
+        'included_components', 'special_features', 'special_features_de',
     ];
 
     protected $casts = [
-        'is_active' => 'boolean',
-        'is_featured' => 'boolean',
-        'price' => 'decimal:2',
-        'sale_price' => 'decimal:2',
-         'price' => 'decimal:2',
-    'sale_price' => 'decimal:2',
-    'is_active' => 'boolean',
-    'is_featured' => 'boolean',
-    'assembly_required' => 'boolean',
-    'year' => 'integer',
-    'number_of_speeds' => 'integer',
+        'price'             => 'decimal:2',
+        'sale_price'        => 'decimal:2',
+        'is_featured'       => 'boolean',
+        'is_new'            => 'boolean',
+        'assembly_required' => 'boolean',
     ];
 
-    // Sluggable
-    public function sluggable(): array
-    {
-        return [
-            'slug' => [
-                'source' => 'name'
-            ]
-        ];
-    }
-
-    // Relations
+    /* ── Relations ── */
     public function category()
     {
         return $this->belongsTo(Category::class);
@@ -52,7 +44,7 @@ class Product extends Model
 
     public function images()
     {
-        return $this->hasMany(ProductImage::class)->orderBy('order');
+        return $this->hasMany(ProductImage::class)->orderBy('sort_order');
     }
 
     public function primaryImage()
@@ -60,35 +52,36 @@ class Product extends Model
         return $this->hasOne(ProductImage::class)->where('is_primary', true);
     }
 
-    public function variants()
-    {
-        return $this->hasMany(ProductVariant::class);
-    }
-
     public function reviews()
     {
-        return $this->hasMany(Review::class);
+        return $this->hasMany(Review::class)->latest();
     }
 
-    public function orderItems()
+    /* ── Accesseurs utiles ── */
+    public function getAverageRatingAttribute(): float
     {
-        return $this->hasMany(OrderItem::class);
+        if ($this->reviews()->count() === 0) return 0;
+        return round($this->reviews()->avg('rating'), 1);
     }
 
-    public function wishlists()
-    {
-        return $this->hasMany(Wishlist::class);
-    }
-
-    // Accessors
-    public function getAverageRatingAttribute()
-    {
-        return $this->reviews()->avg('rating') ?? 0;
-    }
-
-    public function getTotalReviewsAttribute()
+    public function getTotalReviewsAttribute(): int
     {
         return $this->reviews()->count();
     }
 
+    public function getDiscountPercentAttribute(): int
+    {
+        if (!$this->sale_price || $this->price == 0) return 0;
+        return (int) round((($this->price - $this->sale_price) / $this->price) * 100);
+    }
+
+    public function getIsOnSaleAttribute(): bool
+    {
+        return !is_null($this->sale_price) && $this->sale_price < $this->price;
+    }
+
+    public function getIsInStockAttribute(): bool
+    {
+        return $this->stock > 0;
+    }
 }

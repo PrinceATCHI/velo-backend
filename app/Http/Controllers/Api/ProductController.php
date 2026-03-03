@@ -11,57 +11,81 @@ class ProductController extends Controller
     // Liste des produits avec filtres
     public function index(Request $request)
     {
-        $query = Product::with(['category', 'primaryImage', 'reviews'])
-            ->where('is_active', true);
+        $query = Product::with(['category', 'images']);
 
-        // Filtre par catégorie
-        if ($request->has('category')) {
-            $query->whereHas('category', function($q) use ($request) {
+        // Filtre par catégorie (slug)
+        if ($request->filled('category')) {
+            $query->whereHas('category', function ($q) use ($request) {
                 $q->where('slug', $request->category);
             });
         }
 
         // Filtre par prix
-        if ($request->has('min_price')) {
+        if ($request->filled('min_price')) {
             $query->where('price', '>=', $request->min_price);
         }
-        if ($request->has('max_price')) {
+        if ($request->filled('max_price')) {
             $query->where('price', '<=', $request->max_price);
         }
 
-        // Recherche
-        if ($request->has('search')) {
-            $query->where(function($q) use ($request) {
-                $q->where('name', 'like', '%' . $request->search . '%')
-                  ->orWhere('description', 'like', '%' . $request->search . '%');
+        // Filtre en stock
+        if ($request->in_stock === 'true') {
+            $query->where('stock', '>', 0);
+        }
+
+        // Filtre en promotion
+        if ($request->on_sale === 'true') {
+            $query->whereNotNull('sale_price');
+        }
+
+        // Filtre nouveautés
+        if ($request->is_new === 'true') {
+            $query->where('is_new', true);
+        }
+
+        // Recherche (FR + DE)
+        if ($request->filled('search')) {
+            $search = $request->search;
+            $query->where(function ($q) use ($search) {
+                $q->where('name', 'like', "%{$search}%")
+                  ->orWhere('name_de', 'like', "%{$search}%")
+                  ->orWhere('description', 'like', "%{$search}%")
+                  ->orWhere('brand', 'like', "%{$search}%");
             });
         }
 
         // Tri
-        $sortBy = $request->get('sort', 'created_at');
-        $sortOrder = $request->get('order', 'desc');
-        
-        if ($sortBy === 'price') {
-            $query->orderBy('price', $sortOrder);
-        } elseif ($sortBy === 'popularity') {
-            $query->orderBy('views', 'desc');
-        } else {
-            $query->orderBy('created_at', $sortOrder);
-        }
+        match ($request->get('sort', 'newest')) {
+            'price_asc'  => $query->orderBy('price', 'asc'),
+            'price_desc' => $query->orderBy('price', 'desc'),
+            'popular'    => $query->orderBy('is_featured', 'desc'),
+            'rating'     => $query->orderBy('id', 'desc'),
+            default      => $query->orderBy('created_at', 'desc'),
+        };
 
-        // Pagination
-        $products = $query->paginate(12);
+        $products = $query->paginate(20);
 
-        return response()->json($products);
+        return response()->json([
+            'data'  => $products->items(),
+            'meta'  => [
+                'total'        => $products->total(),
+                'per_page'     => $products->perPage(),
+                'current_page' => $products->currentPage(),
+                'last_page'    => $products->lastPage(),
+            ],
+        ]);
     }
 
     // Produits en vedette
-    public function featured()
+    public function featured(Request $request)
     {
-        $products = Product::with(['category', 'primaryImage'])
-            ->where('is_active', true)
+        $limit = $request->get('limit', 8);
+
+        $products = Product::with(['category', 'images'])
             ->where('is_featured', true)
-            ->limit(8)
+            ->where('stock', '>', 0)
+            ->orderBy('created_at', 'desc')
+            ->limit($limit)
             ->get();
 
         return response()->json($products);
@@ -74,17 +98,11 @@ class ProductController extends Controller
             ->with([
                 'category',
                 'images',
-                'variants',
-                'reviews' => function($query) {
-                    $query->where('is_approved', true)
-                          ->with('user')
-                          ->latest();
-                }
+                'reviews' => function ($query) {
+                    $query->with('user')->latest();
+                },
             ])
             ->firstOrFail();
-
-        // Incrémenter les vues
-        $product->increment('views');
 
         return response()->json($product);
     }
@@ -93,15 +111,14 @@ class ProductController extends Controller
     public function related($id)
     {
         $product = Product::findOrFail($id);
-        
+
         $related = Product::where('category_id', $product->category_id)
             ->where('id', '!=', $id)
-            ->where('is_active', true)
-            ->with('primaryImage')
+            ->where('stock', '>', 0)
+            ->with('images')
             ->limit(4)
             ->get();
 
         return response()->json($related);
     }
 }
-

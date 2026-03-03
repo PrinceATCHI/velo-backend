@@ -8,25 +8,23 @@ use Illuminate\Http\Request;
 
 class CategoryController extends Controller
 {
-    // Liste toutes les catégories
+    // Liste toutes les catégories actives
     public function index()
     {
-        $categories = Category::with('children')
-            ->whereNull('parent_id')
-            ->where('is_active', true)
-            ->orderBy('order')
+        $categories = Category::orderBy('sort_order')
+            ->orderBy('name')
             ->get();
 
         return response()->json($categories);
     }
 
-    // Détails d'une catégorie
+    // Détails d'une catégorie + ses produits
     public function show($slug)
     {
         $category = Category::where('slug', $slug)
-            ->with(['products' => function($query) {
-                $query->where('is_active', true)
-                      ->with('primaryImage');
+            ->with(['products' => function ($query) {
+                $query->where('stock', '>', 0)
+                      ->with('images');
             }])
             ->firstOrFail();
 
