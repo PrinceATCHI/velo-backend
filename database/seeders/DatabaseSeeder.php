@@ -156,6 +156,8 @@ class DatabaseSeeder extends Seeder
             $newCustomer->assignRole('customer');
         }
 
+        $this->call(RolesSeeder::class);
+
         $this->command->info('✅ ' . count($additionalCustomers) . ' clients supplémentaires créés');
 
         // ═══════════════════════════════════════════════════════════
