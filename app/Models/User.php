@@ -78,4 +78,8 @@ public function bikeConfigurations()
             'password' => 'hashed',
         ];
     }
+    public function wishlistProducts()
+{
+    return $this->belongsToMany(\App\Models\Product::class, 'wishlist_items', 'user_id', 'product_id')->withTimestamps();
+}
 }

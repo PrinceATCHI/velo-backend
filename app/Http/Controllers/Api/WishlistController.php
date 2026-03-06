@@ -3,62 +3,73 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Models\Wishlist;
+use App\Models\Product;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 
 class WishlistController extends Controller
 {
-    // Liste de souhaits
-    public function index(Request $request)
+    /**
+     * GET /wishlist
+     * Retourne tous les produits en favoris de l'utilisateur connecté
+     */
+    public function index()
     {
-        $wishlist = $request->user()
-            ->wishlists()
-            ->with('product.primaryImage')
+        $user = Auth::user();
+        $items = $user->wishlistProducts()
+            ->with(['images', 'category'])
             ->get();
 
-        return response()->json($wishlist);
+        return response()->json($items);
     }
 
-    // Ajouter à la wishlist
+    /**
+     * POST /wishlist
+     * Ajoute un produit aux favoris
+     */
     public function store(Request $request)
     {
-        $request->validate([
-            'product_id' => 'required|exists:products,id',
-        ]);
+        $request->validate(['product_id' => 'required|exists:products,id']);
 
-        // Vérifier si déjà dans la wishlist
-        $exists = Wishlist::where('user_id', $request->user()->id)
-            ->where('product_id', $request->product_id)
-            ->exists();
+        $user = Auth::user();
 
-        if ($exists) {
-            return response()->json([
-                'message' => 'Ce produit est déjà dans votre liste de souhaits'
-            ], 400);
+        // Évite les doublons
+        if (!$user->wishlistProducts()->where('product_id', $request->product_id)->exists()) {
+            $user->wishlistProducts()->attach($request->product_id);
         }
 
-        $wishlist = Wishlist::create([
-            'user_id' => $request->user()->id,
-            'product_id' => $request->product_id,
-        ]);
-
-        return response()->json([
-            'message' => 'Produit ajouté à la liste de souhaits',
-            'wishlist' => $wishlist->load('product.primaryImage'),
-        ], 201);
+        return response()->json(['message' => 'Added to wishlist'], 201);
     }
 
-    // Retirer de la wishlist
-    public function destroy(Request $request, $productId)
+    /**
+     * DELETE /wishlist/{productId}
+     * Retire un produit des favoris
+     */
+    public function destroy($productId)
     {
-        $wishlist = Wishlist::where('user_id', $request->user()->id)
-            ->where('product_id', $productId)
-            ->firstOrFail();
+        $user = Auth::user();
+        $user->wishlistProducts()->detach($productId);
 
-        $wishlist->delete();
+        return response()->json(['message' => 'Removed from wishlist']);
+    }
 
-        return response()->json([
-            'message' => 'Produit retiré de la liste de souhaits'
+    /**
+     * POST /wishlist/sync
+     * Sync localStorage → BDD après connexion
+     * Body: { product_ids: [1, 2, 3] }
+     */
+    public function sync(Request $request)
+    {
+        $request->validate([
+            'product_ids'   => 'required|array',
+            'product_ids.*' => 'exists:products,id',
         ]);
+
+        $user = Auth::user();
+
+        // syncWithoutDetaching = ajoute sans supprimer les existants
+        $user->wishlistProducts()->syncWithoutDetaching($request->product_ids);
+
+        return response()->json(['message' => 'Wishlist synced']);
     }
 }

@@ -25,7 +25,7 @@ use App\Http\Controllers\TermsController;
 
 // Routes publiques
 Route::prefix('v1')->group(function () {
-    
+
     // Authentification
     Route::post('/register', [AuthController::class, 'register']);
     Route::post('/login', [AuthController::class, 'login']);
@@ -49,18 +49,23 @@ Route::prefix('v1')->group(function () {
     Route::post('/configurator/check-compatibility', [BikeConfiguratorController::class, 'checkCompatibility']);
     Route::post('/configurator/calculate-price', [BikeConfiguratorController::class, 'calculatePrice']);
 
-    Route::get('/payment-settings', function() {
-    return response()->json(App\Models\PaymentSettings::getActive());
-    
-});
+    Route::get('/payment-settings', function () {
+        return response()->json(App\Models\PaymentSettings::getActive());
+    });
 });
 
 // Routes protégées
 Route::prefix('v1')->middleware('auth:sanctum')->group(function () {
-    
+
     // Auth
     Route::post('/logout', [AuthController::class, 'logout']);
     Route::get('/me', [AuthController::class, 'me']);
+
+    // Wishlist
+    Route::get('/wishlist', [WishlistController::class, 'index']);
+    Route::post('/wishlist/sync', [WishlistController::class, 'sync']);
+    Route::post('/wishlist', [WishlistController::class, 'store']);
+    Route::delete('/wishlist/{productId}', [WishlistController::class, 'destroy']);
 
     // Profil
     Route::get('/user/profile', [UserController::class, 'profile']);
@@ -91,26 +96,20 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function () {
     Route::put('/reviews/{id}', [ReviewController::class, 'update']);
     Route::delete('/reviews/{id}', [ReviewController::class, 'destroy']);
 
-    // Wishlist
-    Route::get('/wishlist', [WishlistController::class, 'index']);
-    Route::post('/wishlist', [WishlistController::class, 'store']);
-    Route::delete('/wishlist/{productId}', [WishlistController::class, 'destroy']);
-
     // Configurateur
     Route::post('/configurator/save', [BikeConfiguratorController::class, 'saveConfiguration']);
     Route::get('/configurator/my-configurations', [BikeConfiguratorController::class, 'myConfigurations']);
     Route::get('/configurator/configurations/{id}', [BikeConfiguratorController::class, 'showConfiguration']);
     Route::delete('/configurator/configurations/{id}', [BikeConfiguratorController::class, 'deleteConfiguration']);
 
-
-Route::post('/payment-proofs', [PaymentProofController::class, 'store']);
+    // Preuves de paiement
+    Route::post('/payment-proofs', [PaymentProofController::class, 'store']);
     Route::get('/payment-proofs/{orderId}', [PaymentProofController::class, 'show']);
-
-    });
+});
 
 // Routes ADMIN
 Route::prefix('v1/admin')->middleware(['auth:sanctum', 'role:admin'])->group(function () {
-    
+
     // Dashboard
     Route::get('/dashboard', [DashboardController::class, 'index']);
 
@@ -130,19 +129,18 @@ Route::prefix('v1/admin')->middleware(['auth:sanctum', 'role:admin'])->group(fun
     // Gestion des coupons
     Route::apiResource('coupons', CouponController::class);
 
+    // Preuves de paiement
     Route::get('/payment-proofs', [AdminPaymentProofController::class, 'index']);
     Route::get('/payment-proofs/{id}', [AdminPaymentProofController::class, 'show']);
     Route::post('/payment-proofs/{id}/verify', [AdminPaymentProofController::class, 'verify']);
     Route::post('/payment-proofs/{id}/reject', [AdminPaymentProofController::class, 'reject']);
 
-   
     // Payment Settings
-    Route::get('/admin/payment-settings', [App\Http\Controllers\Api\Admin\PaymentSettingsController::class, 'index']);
-    Route::put('/admin/payment-settings', [App\Http\Controllers\Api\Admin\PaymentSettingsController::class, 'update']);
+    Route::get('/payment-settings', [PaymentSettingsController::class, 'index']);
+    Route::put('/payment-settings', [PaymentSettingsController::class, 'update']);
 
-    Route::post  ('/auth/accept-terms',  [TermsController::class, 'accept']);
-    Route::delete('/auth/refuse-terms',  [TermsController::class, 'refuse']);
-    Route::get   ('/auth/terms-status',  [TermsController::class, 'status']);
-
+    // CGU
+    Route::post('/auth/accept-terms', [TermsController::class, 'accept']);
+    Route::delete('/auth/refuse-terms', [TermsController::class, 'refuse']);
+    Route::get('/auth/terms-status', [TermsController::class, 'status']);
 });
-
