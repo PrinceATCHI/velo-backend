@@ -20,6 +20,7 @@ use App\Http\Controllers\Api\Admin\CouponController;
 use App\Http\Controllers\Api\PaymentProofController;
 use App\Http\Controllers\Api\Admin\PaymentProofController as AdminPaymentProofController;
 use App\Http\Controllers\Api\Admin\PaymentSettingsController;
+use App\Http\Controllers\TermsController;
 
 
 // Routes publiques
@@ -138,5 +139,10 @@ Route::prefix('v1/admin')->middleware(['auth:sanctum', 'role:admin'])->group(fun
     // Payment Settings
     Route::get('/admin/payment-settings', [App\Http\Controllers\Api\Admin\PaymentSettingsController::class, 'index']);
     Route::put('/admin/payment-settings', [App\Http\Controllers\Api\Admin\PaymentSettingsController::class, 'update']);
+
+    Route::post  ('/auth/accept-terms',  [TermsController::class, 'accept']);
+    Route::delete('/auth/refuse-terms',  [TermsController::class, 'refuse']);
+    Route::get   ('/auth/terms-status',  [TermsController::class, 'status']);
+
 });
 
