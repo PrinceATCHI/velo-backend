@@ -57,6 +57,12 @@ class Product extends Model
         return $this->hasMany(Review::class)->latest();
     }
 
+    // ✅ Ajout de la relation orderItems pour le dashboard (withCount)
+    public function orderItems()
+    {
+        return $this->hasMany(OrderItem::class);
+    }
+
     /* ── Accesseurs utiles ── */
     public function getAverageRatingAttribute(): float
     {

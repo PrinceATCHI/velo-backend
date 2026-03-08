@@ -3,47 +3,46 @@
 namespace App\Http\Controllers\Api\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\User;
 use Illuminate\Http\Request;
 
 class CustomerController extends Controller
 {
-    /**
-     * Display a listing of the resource.
-     */
-    public function index()
+    public function index(Request $request)
     {
-        //
+        $query = User::with('orders')
+            ->whereDoesntHave('roles', fn($q) => $q->where('name', 'admin'))
+            ->withCount('orders');
+
+        if ($request->filled('search')) {
+            $search = $request->search;
+            $query->where(function ($q) use ($search) {
+                $q->where('name',  'like', "%{$search}%")
+                  ->orWhere('email', 'like', "%{$search}%");
+            });
+        }
+
+        $customers = $query->orderBy('created_at', 'desc')->get();
+
+        return response()->json(['data' => $customers]);
     }
 
-    /**
-     * Store a newly created resource in storage.
-     */
-    public function store(Request $request)
-    {
-        //
-    }
-
-    /**
-     * Display the specified resource.
-     */
     public function show(string $id)
     {
-        //
+        $customer = User::with(['orders.items.product'])
+            ->whereDoesntHave('roles', fn($q) => $q->where('name', 'admin'))
+            ->findOrFail($id);
+
+        return response()->json($customer);
     }
 
-    /**
-     * Update the specified resource in storage.
-     */
-    public function update(Request $request, string $id)
-    {
-        //
-    }
-
-    /**
-     * Remove the specified resource from storage.
-     */
     public function destroy(string $id)
     {
-        //
+        $customer = User::whereDoesntHave('roles', fn($q) => $q->where('name', 'admin'))
+            ->findOrFail($id);
+
+        $customer->delete();
+
+        return response()->json(['message' => 'Client supprimé']);
     }
 }
