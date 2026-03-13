@@ -5,6 +5,9 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\PaymentProof;
 use App\Models\Order;
+use App\Models\User;
+use App\Notifications\PaymentProofSubmitted;
+use App\Services\FcmService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 
@@ -17,7 +20,6 @@ class PaymentProofController extends Controller
             'transaction_reference' => 'required|string|max:255',
             'transaction_date'      => 'required|date|before_or_equal:today',
             'amount'                => 'required|numeric|min:0',
-            // ✅ Supprime 'image' qui bloque les PDF — utilise uniquement mimes + size
             'screenshot'            => 'required|file|mimes:jpeg,jpg,png,webp,pdf|max:5120',
             'comment'               => 'nullable|string|max:1000',
         ]);
@@ -27,7 +29,7 @@ class PaymentProofController extends Controller
             ->where('user_id', auth()->id())
             ->firstOrFail();
 
-        // Bloquer si une preuve est déjà en attente de vérification
+        // Bloquer si une preuve est déjà en attente
         if ($order->paymentProof && $order->paymentProof->status === 'pending') {
             return response()->json([
                 'message' => 'Une preuve de paiement est déjà en attente de vérification.',
@@ -52,8 +54,29 @@ class PaymentProofController extends Controller
             'status'                => 'pending',
         ]);
 
-        // Mettre à jour le statut de paiement de la commande
+        // Mettre à jour le statut de la commande
         $order->update(['payment_status' => 'pending_verification']);
+
+        // ✅ NOTIFICATIONS — Alerter tous les admins
+        $proof->load('order', 'user');
+        $admins = User::role('admin')->get();
+
+        foreach ($admins as $admin) {
+            // Email + DB notification
+            $admin->notify(new PaymentProofSubmitted($proof));
+
+            // Push FCM mobile
+            app(FcmService::class)->sendToUser(
+                $admin->id,
+                '💳 Nouvelle preuve de paiement',
+                $proof->user->name . ' a soumis une preuve pour la commande ' . $order->order_number,
+                [
+                    'type'     => 'payment_proof_submitted',
+                    'proof_id' => (string) $proof->id,
+                    'url'      => '/admin/payment-proofs',
+                ]
+            );
+        }
 
         return response()->json([
             'message' => 'Preuve de paiement soumise avec succès.',

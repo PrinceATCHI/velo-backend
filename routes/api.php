@@ -18,6 +18,7 @@ use App\Http\Controllers\Api\Admin\OrderController as AdminOrderController;
 use App\Http\Controllers\Api\Admin\CustomerController;
 use App\Http\Controllers\Api\Admin\CouponController;
 use App\Http\Controllers\Api\PaymentProofController;
+use App\Http\Controllers\Api\FcmTokenController;
 use App\Http\Controllers\Api\Admin\PaymentProofController as AdminPaymentProofController;
 use App\Http\Controllers\Api\Admin\PaymentSettingsController;
 use App\Http\Controllers\TermsController;
@@ -105,6 +106,10 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function () {
     // Preuves de paiement
     Route::post('/payment-proofs', [PaymentProofController::class, 'store']);
     Route::get('/payment-proofs/{orderId}', [PaymentProofController::class, 'show']);
+
+    // FCM Token (push notifications)
+    Route::post('/fcm-token',   [FcmTokenController::class, 'store']);
+    Route::delete('/fcm-token', [FcmTokenController::class, 'destroy']);
 });
 
 // Routes ADMIN
@@ -130,17 +135,22 @@ Route::prefix('v1/admin')->middleware(['auth:sanctum', 'role:admin'])->group(fun
     Route::apiResource('coupons', CouponController::class);
 
     // Preuves de paiement
-    Route::get('/payment-proofs', [AdminPaymentProofController::class, 'index']);
-    Route::get('/payment-proofs/{id}', [AdminPaymentProofController::class, 'show']);
+    Route::get('/payment-proofs',              [AdminPaymentProofController::class, 'index']);
+    Route::get('/payment-proofs/{id}',         [AdminPaymentProofController::class, 'show']);
     Route::post('/payment-proofs/{id}/verify', [AdminPaymentProofController::class, 'verify']);
     Route::post('/payment-proofs/{id}/reject', [AdminPaymentProofController::class, 'reject']);
 
+    // Notifications admin
+    Route::get('/notifications',             [AdminPaymentProofController::class, 'notifications']);
+    Route::post('/notifications/{id}/read',  [AdminPaymentProofController::class, 'markRead']);
+    Route::post('/notifications/read-all',   [AdminPaymentProofController::class, 'markAllRead']);
+
     // Payment Settings
-    Route::get('/payment-settings', [PaymentSettingsController::class, 'index']);
-    Route::put('/payment-settings', [PaymentSettingsController::class, 'update']);
+    Route::get('/payment-settings',  [PaymentSettingsController::class, 'index']);
+    Route::put('/payment-settings',  [PaymentSettingsController::class, 'update']);
 
     // CGU
-    Route::post('/auth/accept-terms', [TermsController::class, 'accept']);
+    Route::post('/auth/accept-terms',  [TermsController::class, 'accept']);
     Route::delete('/auth/refuse-terms', [TermsController::class, 'refuse']);
-    Route::get('/auth/terms-status', [TermsController::class, 'status']);
+    Route::get('/auth/terms-status',   [TermsController::class, 'status']);
 });
