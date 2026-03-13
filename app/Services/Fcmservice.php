@@ -3,18 +3,31 @@
 namespace App\Services;
 
 use App\Models\FcmToken;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Kreait\Firebase\Factory;
+use Kreait\Firebase\Messaging\CloudMessage;
+use Kreait\Firebase\Messaging\Notification;
 
 class FcmService
 {
-    private string $serverKey;
-    private string $projectId;
+    private $messaging;
 
     public function __construct()
     {
-        $this->serverKey = config('services.firebase.server_key', '');
-        $this->projectId = config('services.firebase.project_id', '');
+        try {
+            $credentialsPath = storage_path('firebase-credentials.json');
+
+            if (!file_exists($credentialsPath)) {
+                Log::warning('FCM: firebase-credentials.json introuvable — push désactivé');
+                return;
+            }
+
+            $factory = (new Factory)->withServiceAccount($credentialsPath);
+            $this->messaging = $factory->createMessaging();
+
+        } catch (\Exception $e) {
+            Log::error('FCM init error: ' . $e->getMessage());
+        }
     }
 
     /**
@@ -22,16 +35,11 @@ class FcmService
      */
     public function sendToUser(int $userId, string $title, string $body, array $data = []): void
     {
-        if (empty($this->serverKey)) {
-            Log::warning('FCM: server_key non configuré — push ignoré');
-            return;
-        }
+        if (!$this->messaging) return;
 
         $tokens = FcmToken::where('user_id', $userId)->pluck('token')->toArray();
 
-        if (empty($tokens)) {
-            return; // Pas de device enregistré pour cet utilisateur
-        }
+        if (empty($tokens)) return;
 
         $this->sendToTokens($tokens, $title, $body, $data);
     }
@@ -41,35 +49,32 @@ class FcmService
      */
     public function sendToTokens(array $tokens, string $title, string $body, array $data = []): void
     {
-        if (empty($this->serverKey) || empty($tokens)) return;
+        if (!$this->messaging || empty($tokens)) return;
 
-        // Batch par 500 (limite FCM)
+        // Convertir toutes les valeurs data en string (requis par FCM)
+        $stringData = array_map('strval', $data);
+
         foreach (array_chunk($tokens, 500) as $chunk) {
             try {
-                $response = Http::withHeaders([
-                    'Authorization' => 'key=' . $this->serverKey,
-                    'Content-Type'  => 'application/json',
-                ])->post('https://fcm.googleapis.com/fcm/send', [
-                    'registration_ids' => $chunk,
-                    'notification' => [
-                        'title' => $title,
-                        'body'  => $body,
-                        'icon'  => '/icon-192.png',
-                        'click_action' => config('app.frontend_url'),
-                    ],
-                    'data' => $data,
-                ]);
+                $message = CloudMessage::new()
+                    ->withNotification(
+                        Notification::create($title, $body)
+                            ->withImageUrl('/icon-192.png')
+                    )
+                    ->withData($stringData);
 
-                $result = $response->json();
+                $report = $this->messaging->sendMulticast($message, $chunk);
 
                 // Nettoyer les tokens invalides
-                if (isset($result['results'])) {
-                    foreach ($result['results'] as $i => $r) {
-                        if (isset($r['error']) && in_array($r['error'], ['InvalidRegistration', 'NotRegistered'])) {
-                            FcmToken::where('token', $chunk[$i])->delete();
-                        }
+                if ($report->hasFailures()) {
+                    foreach ($report->failures()->getItems() as $failure) {
+                        $invalidToken = $failure->target()->value();
+                        FcmToken::where('token', $invalidToken)->delete();
+                        Log::info('FCM: token invalide supprimé — ' . substr($invalidToken, 0, 20) . '...');
                     }
                 }
+
+                Log::info("FCM: {$report->successes()->count()} envoyés, {$report->failures()->count()} échoués");
 
             } catch (\Exception $e) {
                 Log::error('FCM send error: ' . $e->getMessage());
