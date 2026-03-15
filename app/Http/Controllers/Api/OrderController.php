@@ -72,7 +72,6 @@ class OrderController extends Controller
         $cart->items()->delete();
 
         $order->load(['items', 'user', 'shippingAddress', 'billingAddress']);
-        Mail::to(config('mail.admin_email'))->send(new NewOrderAdmin($order));
 
         return response()->json(['message' => 'Commande créée avec succès', 'order' => $order], 201);
     }
@@ -136,7 +135,6 @@ class OrderController extends Controller
         $product->decrement('stock', $request->quantity);
 
         $order->load(['items', 'user', 'shippingAddress', 'billingAddress']);
-        Mail::to(config('mail.admin_email'))->send(new NewOrderAdmin($order));
 
         return response()->json(['message' => 'Commande créée avec succès', 'order' => $order], 201);
     }

@@ -22,6 +22,7 @@ use App\Http\Controllers\Api\FcmTokenController;
 use App\Http\Controllers\Api\Admin\PaymentProofController as AdminPaymentProofController;
 use App\Http\Controllers\Api\Admin\PaymentSettingsController;
 use App\Http\Controllers\TermsController;
+use App\Http\Controllers\Api\NotificationController;
 
 
 // Routes publiques
@@ -91,6 +92,11 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function () {
     Route::delete('/cart', [CartController::class, 'clear']);
 
     Route::post('/orders/buy-now', [OrderController::class, 'buyNow']);
+
+    Route::get('/notifications',              [NotificationController::class, 'index']);
+Route::get('/notifications/unread-count', [NotificationController::class, 'unreadCount']);
+Route::post('/notifications/{id}/read',   [NotificationController::class, 'markRead']);
+Route::post('/notifications/read-all',    [NotificationController::class, 'markAllRead']);
  
 
     // Commandes

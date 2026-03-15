@@ -5,7 +5,7 @@ namespace App\Notifications;
 use App\Models\PaymentProof;
 use Illuminate\Bus\Queueable;
 use Illuminate\Notifications\Notification;
-use Illuminate\Notifications\Messages\MailMessage;
+use App\Mail\PaymentRejectedMail;
 
 class PaymentProofRejected extends Notification
 {
@@ -15,38 +15,25 @@ class PaymentProofRejected extends Notification
 
     public function via($notifiable): array
     {
-        return ['mail', 'database'];
+        return ['database', 'mail'];
     }
 
-    public function toMail($notifiable): MailMessage
+    public function toMail($notifiable)
     {
-        $order  = $this->proof->order;
-        $url    = config('app.frontend_url') . '/submit-payment-proof/' . $order->id;
-        $reason = $this->proof->rejection_reason ?? 'Non précisé';
-
-        return (new MailMessage)
-            ->subject('❌ Preuve de paiement rejetée — ' . $order->order_number)
-            ->greeting('Bonjour ' . $notifiable->name . ',')
-            ->line('Votre preuve de paiement n\'a pas pu être validée.')
-            ->line('**Commande :** ' . $order->order_number)
-            ->line('**Motif du rejet :** ' . $reason)
-            ->line('Merci de soumettre une nouvelle preuve en vous assurant que :')
-            ->line('• L\'image est lisible et complète')
-            ->line('• La référence de transaction est correcte')
-            ->line('• Le montant correspond exactement au total de la commande')
-            ->action('Soumettre une nouvelle preuve', $url)
-            ->line('Pour toute question, contactez-nous à support@fahrradhauskauf.com');
+        return (new PaymentRejectedMail($this->proof))->to($notifiable->email);
     }
 
-    public function toArray($notifiable): array
+    public function toDatabase($notifiable): array
     {
         return [
-            'type'             => 'payment_proof_rejected',
+            'type'             => 'payment_rejected',
+            'title'            => '❌ Paiement rejeté',
+            'message'          => 'Votre preuve de paiement pour la commande ' . $this->proof->order->order_number . ' a été rejetée. Raison : ' . $this->proof->rejection_reason,
             'proof_id'         => $this->proof->id,
-            'order_id'         => $this->proof->order_id,
+            'order_id'         => $this->proof->order->id,
             'order_number'     => $this->proof->order->order_number,
             'rejection_reason' => $this->proof->rejection_reason,
-            'message'          => 'Votre preuve de paiement pour la commande ' . $this->proof->order->order_number . ' a été rejetée.',
+            'url'              => '/orders/' . $this->proof->order->id,
         ];
     }
 }
