@@ -14,9 +14,14 @@ class PaymentProofSubmitted extends Notification
     public function __construct(public PaymentProof $proof) {}
 
     public function via($notifiable): array
-    {
-        return ['mail', 'database'];
+{
+    $channels = ['database'];
+    // Email seulement si SMTP configuré
+    if (config('mail.mailers.smtp.username')) {
+        $channels[] = 'mail';
     }
+    return $channels;
+}
 
     public function toMail($notifiable): MailMessage
     {
