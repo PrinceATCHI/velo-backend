@@ -90,6 +90,9 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function () {
     Route::delete('/cart/{itemId}', [CartController::class, 'destroy']);
     Route::delete('/cart', [CartController::class, 'clear']);
 
+    Route::post('/orders/buy-now', [OrderController::class, 'buyNow']);
+ 
+
     // Commandes
     Route::get('/orders', [OrderController::class, 'index']);
     Route::post('/orders', [OrderController::class, 'store']);
