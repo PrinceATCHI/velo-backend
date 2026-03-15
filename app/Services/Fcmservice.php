@@ -48,37 +48,40 @@ class FcmService
      * Envoyer à une liste de tokens
      */
     public function sendToTokens(array $tokens, string $title, string $body, array $data = []): void
-    {
-        if (!$this->messaging || empty($tokens)) return;
+{
+    if (!$this->messaging || empty($tokens)) return;
 
-        // Convertir toutes les valeurs data en string (requis par FCM)
-        $stringData = array_map('strval', $data);
+    foreach ($tokens as $token) {
+        try {
+            $webpush = \Kreait\Firebase\Messaging\WebPushConfig::fromArray([
+    'headers' => [
+        'Urgency' => 'high',  // ← priorité haute
+        'TTL'     => '60',    // ← expire après 60 secondes si pas livré
+    ],
+    'notification' => [
+        'title'   => $title,
+        'body'    => $body,
+        'icon'    => '/icon-192.png',
+        'vibrate' => [200, 100, 200],
+        'requireInteraction' => true,
+    ],
+    'data' => array_map('strval', $data),
+]);
 
-        foreach (array_chunk($tokens, 500) as $chunk) {
-            try {
-                $message = CloudMessage::new()
-                    ->withNotification(
-                        Notification::create($title, $body)
-                            ->withImageUrl('/icon-192.png')
-                    )
-                    ->withData($stringData);
+            $message = \Kreait\Firebase\Messaging\CloudMessage::new()
+                ->withToken($token)
+                ->withWebPushConfig($webpush);
 
-                $report = $this->messaging->sendMulticast($message, $chunk);
+            $this->messaging->send($message);
 
-                // Nettoyer les tokens invalides
-                if ($report->hasFailures()) {
-                    foreach ($report->failures()->getItems() as $failure) {
-                        $invalidToken = $failure->target()->value();
-                        FcmToken::where('token', $invalidToken)->delete();
-                        Log::info('FCM: token invalide supprimé — ' . substr($invalidToken, 0, 20) . '...');
-                    }
-                }
+            Log::info('FCM: notification envoyée à ' . substr($token, 0, 20) . '...');
 
-                Log::info("FCM: {$report->successes()->count()} envoyés, {$report->failures()->count()} échoués");
-
-            } catch (\Exception $e) {
-                Log::error('FCM send error: ' . $e->getMessage());
+        } catch (\Exception $e) {
+            Log::error('FCM send error: ' . $e->getMessage());
+            if (str_contains($e->getMessage(), 'UNREGISTERED')) {
+                FcmToken::where('token', $token)->delete();
             }
         }
     }
+}
 }

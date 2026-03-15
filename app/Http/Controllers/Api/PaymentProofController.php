@@ -10,6 +10,7 @@ use App\Notifications\PaymentProofSubmitted;
 use App\Services\FcmService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Log;
 
 class PaymentProofController extends Controller
 {
@@ -57,25 +58,37 @@ class PaymentProofController extends Controller
         // Mettre à jour le statut de la commande
         $order->update(['payment_status' => 'pending_verification']);
 
-        // ✅ NOTIFICATIONS — Alerter tous les admins
-        $proof->load('order', 'user');
-        $admins = User::role('admin')->get();
+        // ✅ NOTIFICATIONS — protégées pour ne pas bloquer la réponse
+        try {
+            $proof->load('order', 'user');
+            $admins = User::role('admin')->get();
 
-        foreach ($admins as $admin) {
-            // Email + DB notification
-            $admin->notify(new PaymentProofSubmitted($proof));
+            foreach ($admins as $admin) {
+                // Email + DB notification
+                try {
+                    $admin->notify(new PaymentProofSubmitted($proof));
+                } catch (\Exception $e) {
+                    Log::warning('Notification email échouée pour admin ' . $admin->id . ': ' . $e->getMessage());
+                }
 
-            // Push FCM mobile
-            app(FcmService::class)->sendToUser(
-                $admin->id,
-                '💳 Nouvelle preuve de paiement',
-                $proof->user->name . ' a soumis une preuve pour la commande ' . $order->order_number,
-                [
-                    'type'     => 'payment_proof_submitted',
-                    'proof_id' => (string) $proof->id,
-                    'url'      => '/admin/payment-proofs',
-                ]
-            );
+                // Push FCM mobile
+                try {
+                    app(FcmService::class)->sendToUser(
+                        $admin->id,
+                        '💳 Nouvelle preuve de paiement',
+                        $proof->user->name . ' a soumis une preuve pour la commande ' . $order->order_number,
+                        [
+                            'type'     => 'payment_proof_submitted',
+                            'proof_id' => (string) $proof->id,
+                            'url'      => '/admin/payment-proofs',
+                        ]
+                    );
+                } catch (\Exception $e) {
+                    Log::warning('FCM push échoué pour admin ' . $admin->id . ': ' . $e->getMessage());
+                }
+            }
+        } catch (\Exception $e) {
+            Log::error('Erreur notifications PaymentProof: ' . $e->getMessage());
         }
 
         return response()->json([
