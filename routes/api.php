@@ -53,6 +53,9 @@ Route::prefix('v1')->group(function () {
     Route::get('/payment-settings', function () {
         return response()->json(App\Models\PaymentSettings::getActive());
     });
+
+    Route::post('/forgot-password', [AuthController::class, 'forgotPassword']);
+Route::post('/reset-password',  [AuthController::class, 'resetPassword']);
 });
 
 // Routes protégées
@@ -61,6 +64,7 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function () {
     // Auth
     Route::post('/logout', [AuthController::class, 'logout']);
     Route::get('/me', [AuthController::class, 'me']);
+    Route::post('/email/resend', [AuthController::class, 'resendVerification']);
 
     // Wishlist
     Route::get('/wishlist', [WishlistController::class, 'index']);
