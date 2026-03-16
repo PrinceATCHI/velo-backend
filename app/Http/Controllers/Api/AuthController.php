@@ -102,11 +102,16 @@ class AuthController extends Controller
             return response()->json(['message' => 'Email déjà vérifié.'], 400);
         }
 
-        $verificationUrl = URL::temporarySignedRoute(
-            'verification.verify',
-            now()->addHours(24),
-            ['id' => $user->id, 'hash' => sha1($user->email)]
-        );
+        
+$params = [
+    'id'        => $user->id,
+    'hash'      => sha1($user->email),
+    'expires'   => now()->addHours(24)->timestamp,
+    'signature' => hash_hmac('sha256', $user->id . sha1($user->email) . now()->addHours(24)->timestamp, config('app.key')),
+];
+$verificationUrl = config('app.frontend_url') . '/verify-email?' . http_build_query($params);
+
+
 
         Mail::to($user->email)->send(new VerifyEmail($user, $verificationUrl));
 
@@ -115,25 +120,25 @@ class AuthController extends Controller
 
     // ─── Vérifier l'email ─────────────────────────────────────────────────────
     public function verifyEmail(Request $request, $id, $hash)
-    {
-        $user = User::findOrFail($id);
+{
+    $user = User::findOrFail($id);
 
-        if (!hash_equals(sha1($user->email), $hash)) {
-            return response()->json(['message' => 'Lien de vérification invalide.'], 403);
-        }
-
-        if (!$request->hasValidSignature()) {
-            return response()->json(['message' => 'Lien expiré. Demandez un nouveau lien.'], 410);
-        }
-
-        if ($user->hasVerifiedEmail()) {
-            return redirect(config('app.frontend_url') . '/login?verified=already');
-        }
-
-        $user->markEmailAsVerified();
-
-        return redirect(config('app.frontend_url') . '/login?verified=1');
+    if (!hash_equals(sha1($user->email), $hash)) {
+        return response()->json(['message' => 'Lien invalide.'], 403);
     }
+
+    // Vérifier expiration manuellement
+    if ($request->expires && now()->timestamp > $request->expires) {
+        return response()->json(['message' => 'Lien expiré.'], 410);
+    }
+
+    if ($user->hasVerifiedEmail()) {
+        return response()->json(['message' => 'Email déjà vérifié.'], 200);
+    }
+
+    $user->markEmailAsVerified();
+    return response()->json(['message' => 'Email vérifié.'], 200);
+}
 
     // ─── Demande de reset password ────────────────────────────────────────────
     public function forgotPassword(Request $request)

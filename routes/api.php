@@ -28,6 +28,7 @@ use App\Http\Controllers\Api\NotificationController;
 // Routes publiques
 Route::prefix('v1')->group(function () {
 
+Route::get('/email/verify/{id}/{hash}', [AuthController::class, 'verifyEmail']);
     // Authentification
     Route::post('/register', [AuthController::class, 'register']);
     Route::post('/login', [AuthController::class, 'login']);
