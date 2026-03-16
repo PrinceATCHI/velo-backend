@@ -15,20 +15,18 @@ class VerifyEmail extends Mailable
 
     public function __construct(
         public User $user,
-        public string $verificationUrl
+        public string $code
     ) {}
 
     public function envelope(): Envelope
     {
         return new Envelope(
-            subject: 'Vérifiez votre adresse email — FahrradHauskauf',
+            subject: 'Votre code de vérification — FahrradHauskauf',
         );
     }
 
     public function content(): Content
     {
-        return new Content(
-            view: 'emails.verify-email',
-        );
+        return new Content(view: 'emails.verify-email');
     }
 }

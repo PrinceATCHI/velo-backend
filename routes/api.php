@@ -68,6 +68,8 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function () {
     Route::get('/me', [AuthController::class, 'me']);
     Route::post('/email/resend', [AuthController::class, 'resendVerification']);
 
+    Route::post('/email/verify-code', [AuthController::class, 'verifyEmailCode']);
+
     // Wishlist
     Route::get('/wishlist', [WishlistController::class, 'index']);
     Route::post('/wishlist/sync', [WishlistController::class, 'sync']);

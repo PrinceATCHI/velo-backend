@@ -1,4 +1,3 @@
-cat > /var/www/velo-backend/app/Http/Controllers/Api/AuthController.php << 'EOF'
 <?php
 
 namespace App\Http\Controllers\Api;
@@ -7,29 +6,26 @@ use App\Http\Controllers\Controller;
 use App\Mail\VerifyEmail;
 use App\Mail\ResetPassword;
 use App\Models\User;
+use App\Models\EmailVerification;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Password;
-use Illuminate\Support\Facades\URL;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
 class AuthController extends Controller
 {
-    private function buildVerificationUrl(User $user): string
+    private function sendVerificationCode(User $user): void
     {
-        $id      = $user->id;
-        $hash    = sha1($user->email);
-        $expires = now()->addHours(24)->timestamp;
-        $signature = hash_hmac('sha256', $id . $hash . $expires, config('app.key'));
-
-        return config('app.frontend_url') . '/verify-email?' . http_build_query([
-            'id'        => $id,
-            'hash'      => $hash,
-            'expires'   => $expires,
-            'signature' => $signature,
+        EmailVerification::where('user_id', $user->id)->delete();
+        $code = str_pad(random_int(0, 999999), 6, '0', STR_PAD_LEFT);
+        EmailVerification::create([
+            'user_id'    => $user->id,
+            'code'       => $code,
+            'expires_at' => now()->addMinutes(15),
         ]);
+        Mail::to($user->email)->send(new VerifyEmail($user, $code));
     }
 
     public function register(Request $request)
@@ -47,18 +43,57 @@ class AuthController extends Controller
         ]);
 
         $user->assignRole('customer');
-
-        $verificationUrl = $this->buildVerificationUrl($user);
-        Mail::to($user->email)->send(new VerifyEmail($user, $verificationUrl));
-
+        $this->sendVerificationCode($user);
         $token = $user->createToken('auth_token')->plainTextToken;
 
         return response()->json([
-            'access_token' => $token,
-            'token_type'   => 'Bearer',
-            'user'         => $user,
-            'message'      => 'Inscription réussie ! Vérifiez votre email pour activer votre compte.',
+            'access_token'   => $token,
+            'token_type'     => 'Bearer',
+            'user'           => $user,
+            'email_verified' => false,
+            'message'        => 'Inscription réussie ! Vérifiez votre email pour activer votre compte.',
         ], 201);
+    }
+
+    public function verifyEmailCode(Request $request)
+    {
+        $request->validate(['code' => 'required|string|size:6']);
+        $user = $request->user();
+
+        if ($user->hasVerifiedEmail()) {
+            return response()->json(['message' => 'Email déjà vérifié.'], 200);
+        }
+
+        $verification = EmailVerification::where('user_id', $user->id)
+            ->where('code', $request->code)
+            ->first();
+
+        if (!$verification) {
+            return response()->json(['message' => 'Code invalide.'], 422);
+        }
+
+        if ($verification->isExpired()) {
+            $verification->delete();
+            return response()->json(['message' => 'Code expiré. Demandez un nouveau code.'], 410);
+        }
+
+        $user->markEmailAsVerified();
+        $verification->delete();
+
+        return response()->json([
+            'message' => 'Email vérifié avec succès !',
+            'user'    => $user->fresh()->load('roles'),
+        ]);
+    }
+
+    public function resendVerification(Request $request)
+    {
+        $user = $request->user();
+        if ($user->hasVerifiedEmail()) {
+            return response()->json(['message' => 'Email déjà vérifié.'], 400);
+        }
+        $this->sendVerificationCode($user);
+        return response()->json(['message' => 'Nouveau code envoyé.']);
     }
 
     public function login(Request $request)
@@ -80,9 +115,10 @@ class AuthController extends Controller
         $token = $user->createToken('auth_token')->plainTextToken;
 
         return response()->json([
-            'access_token' => $token,
-            'token_type'   => 'Bearer',
-            'user'         => $user,
+            'access_token'   => $token,
+            'token_type'     => 'Bearer',
+            'user'           => $user,
+            'email_verified' => (bool) $user->email_verified_at,
         ]);
     }
 
@@ -97,60 +133,13 @@ class AuthController extends Controller
         return response()->json($request->user()->load('roles'));
     }
 
-    public function resendVerification(Request $request)
-    {
-        $user = $request->user();
-
-        if ($user->hasVerifiedEmail()) {
-            return response()->json(['message' => 'Email déjà vérifié.'], 400);
-        }
-
-        $verificationUrl = $this->buildVerificationUrl($user);
-        Mail::to($user->email)->send(new VerifyEmail($user, $verificationUrl));
-
-        return response()->json(['message' => 'Email de vérification renvoyé.']);
-    }
-
-    public function verifyEmail(Request $request, $id, $hash)
-    {
-        $user = User::findOrFail($id);
-
-        if (!hash_equals(sha1($user->email), $hash)) {
-            return response()->json(['message' => 'Lien invalide.'], 403);
-        }
-
-        $expires   = $request->query('expires');
-        $signature = $request->query('signature');
-
-        if (!$expires || now()->timestamp > (int)$expires) {
-            return response()->json(['message' => 'Lien expiré.'], 410);
-        }
-
-        $expectedSig = hash_hmac('sha256', $id . $hash . $expires, config('app.key'));
-        if (!hash_equals($expectedSig, (string)$signature)) {
-            return response()->json(['message' => 'Signature invalide.'], 403);
-        }
-
-        if ($user->hasVerifiedEmail()) {
-            return response()->json(['message' => 'Email déjà vérifié.'], 200);
-        }
-
-        $user->markEmailAsVerified();
-        return response()->json(['message' => 'Email vérifié avec succès.'], 200);
-    }
-
     public function forgotPassword(Request $request)
     {
-        $request->validate([
-            'email' => 'required|email|exists:users,email',
-        ]);
-
+        $request->validate(['email' => 'required|email|exists:users,email']);
         $user  = User::where('email', $request->email)->first();
         $token = Password::createToken($user);
         $resetUrl = config('app.frontend_url') . '/reset-password?token=' . $token . '&email=' . urlencode($user->email);
-
         Mail::to($user->email)->send(new ResetPassword($user, $resetUrl));
-
         return response()->json(['message' => 'Un email de réinitialisation a été envoyé.']);
     }
 
@@ -183,4 +172,3 @@ class AuthController extends Controller
         ], 400);
     }
 }
-EOF
