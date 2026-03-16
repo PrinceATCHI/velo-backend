@@ -1,3 +1,4 @@
+cat > /var/www/velo-backend/app/Http/Controllers/Api/AuthController.php << 'EOF'
 <?php
 
 namespace App\Http\Controllers\Api;
@@ -16,7 +17,21 @@ use Illuminate\Validation\ValidationException;
 
 class AuthController extends Controller
 {
-    // ─── Inscription ──────────────────────────────────────────────────────────
+    private function buildVerificationUrl(User $user): string
+    {
+        $id      = $user->id;
+        $hash    = sha1($user->email);
+        $expires = now()->addHours(24)->timestamp;
+        $signature = hash_hmac('sha256', $id . $hash . $expires, config('app.key'));
+
+        return config('app.frontend_url') . '/verify-email?' . http_build_query([
+            'id'        => $id,
+            'hash'      => $hash,
+            'expires'   => $expires,
+            'signature' => $signature,
+        ]);
+    }
+
     public function register(Request $request)
     {
         $request->validate([
@@ -33,13 +48,7 @@ class AuthController extends Controller
 
         $user->assignRole('customer');
 
-        // Envoyer l'email de vérification
-        $verificationUrl = URL::temporarySignedRoute(
-            'verification.verify',
-            now()->addHours(24),
-            ['id' => $user->id, 'hash' => sha1($user->email)]
-        );
-
+        $verificationUrl = $this->buildVerificationUrl($user);
         Mail::to($user->email)->send(new VerifyEmail($user, $verificationUrl));
 
         $token = $user->createToken('auth_token')->plainTextToken;
@@ -52,7 +61,6 @@ class AuthController extends Controller
         ], 201);
     }
 
-    // ─── Connexion ────────────────────────────────────────────────────────────
     public function login(Request $request)
     {
         $request->validate([
@@ -69,7 +77,6 @@ class AuthController extends Controller
         }
 
         $user->load('roles');
-
         $token = $user->createToken('auth_token')->plainTextToken;
 
         return response()->json([
@@ -79,21 +86,17 @@ class AuthController extends Controller
         ]);
     }
 
-    // ─── Déconnexion ──────────────────────────────────────────────────────────
     public function logout(Request $request)
     {
         $request->user()->currentAccessToken()->delete();
-
         return response()->json(['message' => 'Déconnexion réussie']);
     }
 
-    // ─── Profil ───────────────────────────────────────────────────────────────
     public function me(Request $request)
     {
         return response()->json($request->user()->load('roles'));
     }
 
-    // ─── Renvoyer l'email de vérification ─────────────────────────────────────
     public function resendVerification(Request $request)
     {
         $user = $request->user();
@@ -102,66 +105,55 @@ class AuthController extends Controller
             return response()->json(['message' => 'Email déjà vérifié.'], 400);
         }
 
-        
-$params = [
-    'id'        => $user->id,
-    'hash'      => sha1($user->email),
-    'expires'   => now()->addHours(24)->timestamp,
-    'signature' => hash_hmac('sha256', $user->id . sha1($user->email) . now()->addHours(24)->timestamp, config('app.key')),
-];
-$verificationUrl = config('app.frontend_url') . '/verify-email?' . http_build_query($params);
-
-
-
+        $verificationUrl = $this->buildVerificationUrl($user);
         Mail::to($user->email)->send(new VerifyEmail($user, $verificationUrl));
 
         return response()->json(['message' => 'Email de vérification renvoyé.']);
     }
 
-    // ─── Vérifier l'email ─────────────────────────────────────────────────────
     public function verifyEmail(Request $request, $id, $hash)
-{
-    $user = User::findOrFail($id);
+    {
+        $user = User::findOrFail($id);
 
-    if (!hash_equals(sha1($user->email), $hash)) {
-        return response()->json(['message' => 'Lien invalide.'], 403);
+        if (!hash_equals(sha1($user->email), $hash)) {
+            return response()->json(['message' => 'Lien invalide.'], 403);
+        }
+
+        $expires   = $request->query('expires');
+        $signature = $request->query('signature');
+
+        if (!$expires || now()->timestamp > (int)$expires) {
+            return response()->json(['message' => 'Lien expiré.'], 410);
+        }
+
+        $expectedSig = hash_hmac('sha256', $id . $hash . $expires, config('app.key'));
+        if (!hash_equals($expectedSig, (string)$signature)) {
+            return response()->json(['message' => 'Signature invalide.'], 403);
+        }
+
+        if ($user->hasVerifiedEmail()) {
+            return response()->json(['message' => 'Email déjà vérifié.'], 200);
+        }
+
+        $user->markEmailAsVerified();
+        return response()->json(['message' => 'Email vérifié avec succès.'], 200);
     }
 
-    // Vérifier expiration manuellement
-    if ($request->expires && now()->timestamp > $request->expires) {
-        return response()->json(['message' => 'Lien expiré.'], 410);
-    }
-
-    if ($user->hasVerifiedEmail()) {
-        return response()->json(['message' => 'Email déjà vérifié.'], 200);
-    }
-
-    $user->markEmailAsVerified();
-    return response()->json(['message' => 'Email vérifié.'], 200);
-}
-
-    // ─── Demande de reset password ────────────────────────────────────────────
     public function forgotPassword(Request $request)
     {
         $request->validate([
             'email' => 'required|email|exists:users,email',
         ]);
 
-        $user = User::where('email', $request->email)->first();
-
-        // Générer un token de reset
+        $user  = User::where('email', $request->email)->first();
         $token = Password::createToken($user);
-
         $resetUrl = config('app.frontend_url') . '/reset-password?token=' . $token . '&email=' . urlencode($user->email);
 
         Mail::to($user->email)->send(new ResetPassword($user, $resetUrl));
 
-        return response()->json([
-            'message' => 'Un email de réinitialisation a été envoyé.',
-        ]);
+        return response()->json(['message' => 'Un email de réinitialisation a été envoyé.']);
     }
 
-    // ─── Reset password ───────────────────────────────────────────────────────
     public function resetPassword(Request $request)
     {
         $request->validate([
@@ -174,7 +166,7 @@ $verificationUrl = config('app.frontend_url') . '/verify-email?' . http_build_qu
             $request->only('email', 'password', 'password_confirmation', 'token'),
             function (User $user, string $password) {
                 $user->forceFill(['password' => Hash::make($password)])->save();
-                $user->tokens()->delete(); // Invalider tous les tokens existants
+                $user->tokens()->delete();
             }
         );
 
@@ -191,3 +183,4 @@ $verificationUrl = config('app.frontend_url') . '/verify-email?' . http_build_qu
         ], 400);
     }
 }
+EOF
