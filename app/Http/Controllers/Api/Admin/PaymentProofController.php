@@ -117,4 +117,12 @@ class PaymentProofController extends Controller
 
         return response()->json(['message' => 'Toutes les notifications marquées comme lues']);
     }
+    public function destroy($id)
+  {
+    $proof = \App\Models\PaymentProof::findOrFail($id);
+    $proof->delete();
+    return response()->json(['message' => 'Preuve supprimée.']);
+
+}
+
 }

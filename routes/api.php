@@ -81,6 +81,8 @@ Route::prefix('v1')->middleware('auth:sanctum')->group(function () {
     Route::put('/user/profile', [UserController::class, 'updateProfile']);
     Route::put('/user/password', [UserController::class, 'updatePassword']);
 
+    Route::delete('/orders/{id}', [OrderController::class, 'destroy']);
+
     // Adresses
     Route::get('/user/addresses', [UserController::class, 'addresses']);
     Route::post('/user/addresses', [UserController::class, 'storeAddress']);
@@ -155,6 +157,8 @@ Route::prefix('v1/admin')->middleware(['auth:sanctum', 'role:admin'])->group(fun
     Route::get('/payment-proofs/{id}',         [AdminPaymentProofController::class, 'show']);
     Route::post('/payment-proofs/{id}/verify', [AdminPaymentProofController::class, 'verify']);
     Route::post('/payment-proofs/{id}/reject', [AdminPaymentProofController::class, 'reject']);
+
+    Route::delete('/payment-proofs/{id}', [AdminPaymentProofController::class, 'destroy']);
 
     // Notifications admin
     Route::get('/notifications',             [AdminPaymentProofController::class, 'notifications']);

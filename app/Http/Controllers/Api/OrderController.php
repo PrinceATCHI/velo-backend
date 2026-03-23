@@ -202,4 +202,14 @@ class OrderController extends Controller
             'notes'               => $request->notes ?? null,
         ]);
     }
+
+    public function destroy($id)
+{
+    $order = Order::where('user_id', auth()->id())->findOrFail($id);
+    if (!in_array($order->status, ['cancelled', 'delivered'])) {
+        return response()->json(['message' => 'Impossible de supprimer une commande en cours.'], 403);
+    }
+    $order->delete();
+    return response()->json(['message' => 'Commande supprimée.']);
+}
 }
